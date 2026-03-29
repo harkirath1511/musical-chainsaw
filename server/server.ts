@@ -34,26 +34,69 @@ app.get('/', (req : Request, res : Response)=>{
     res.send("Hiiii!!!")
 });
 
+
 app.post('/api/chat', async(req, res)=>{
     const {messages} = req.body;
     console.log('📨 Chat request:', messages.length, 'messages');
 
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+
     try {
         const { tools } = await getMCPClient();
 
-        const result = await streamText({
-            model: google("gemini-flash-lite-latest"),  // Cheaper model
+        const result = streamText({
+            model: google("gemini-flash-lite-latest"),
+            system : ` You are a helpful assistant with access to the user's Gmail. 
+                    When the user asks to search for emails, you MUST follow these Gmail Search Operator rules:
+                    1. Dates: Use 'newer_than:2d' or 'older_than:1m' instead of "last 2 days".
+                    2. Specific Dates: Use YYYY/MM/DD format (e.g., 'after:2026/03/01').
+                    3. Senders: Use 'from:name' or 'from:email@domain.com'.
+                    4. Important status: Use 'is:unread', 'is:starred', or 'is:important'.
+                    5. Categories: Use 'category:primary', 'category:social', or 'category:promotions'.
+            Example: If a user says "Find Ollama emails from yesterday", 
+            generate the query: "from:Ollama newer_than:1d" `,
             messages,
             tools,
-            maxRetries: 1 // Don't auto-retry on failure
+            maxRetries: 1,
+            maxSteps: 5
         });
-        console.log("res : : ", res)
-        result.pipeTextStreamToResponse(res);
+
+        // Stream to response and collect for logging
+        let fullText = '';
+        for await (const textPart of result.textStream) {
+            fullText += textPart;
+            res.write(textPart);
+        }
+        res.end();
+
+        console.log('✅ Response sent:', fullText.substring(0, 100) + '...');
     } catch (error) {
-        console.error('Chat error:', error);
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+        console.error('❌ Chat error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+        }
     }
 })
+
+// // Test endpoint WITHOUT tools
+// app.post('/api/test', async (req, res) => {
+//     res.setHeader('Access-Control-Allow-Origin', '*');
+//     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+
+//     try {
+//         const result = streamText({
+//             model: google("gemini-flash-lite-latest"),
+//             messages: [{ role: 'user', content: 'Say hello' }],
+//         });
+//         await result.pipeTextStreamToResponse(res);
+//     } catch (error) {
+//         console.error('❌ Test error:', error);
+//         if (!res.headersSent) {
+//             res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+//         }
+//     }
+// });
 
 app.listen(PORT, ()=>{
     console.log(`Hello, main server's running on port : ${PORT}`);
