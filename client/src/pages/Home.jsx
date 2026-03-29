@@ -8,55 +8,61 @@ export default function Home() {
   const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    console.log('📤 Sending message:', inputValue);
-    
-    if (!inputValue.trim()) return;
+  e.preventDefault();
+  if (!inputValue.trim()) return;
 
-    const userMessage = { id: Date.now(), role: 'user', content: inputValue };
-    setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
-    setIsLoading(true);
-    setError(null);
+  const userMessage = { id: Date.now(), role: 'user', content: inputValue };
+  setMessages(prev => [...prev, userMessage]);
+  setInputValue('');
+  setIsLoading(true);
 
-    try {
-      const response = await fetch('http://localhost:8000/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...messages, userMessage].map(m => ({
-            role: m.role,
-            content: m.content
-          }))
-        })
-      });
+  try {
+    const response = await fetch('http://localhost:8000/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [...messages, userMessage].map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+      })
+    });
 
-      console.log("This is the actual res bruh : ", response)
-      console.log('📨 Response status:', response.status);
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
+    if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = '';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        fullText += decoder.decode(value, { stream: true });
-      }
+    // 1. Create the placeholder ONLY ONCE
+    const assistantId = Date.now() + 1;
+    setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '...' }]);
 
-      console.log('✅ Received response:', fullText);
-      const agentMessage = { id: Date.now() + 1, role: 'assistant', content: fullText };
-      setMessages(prev => [...prev, agentMessage]);
-    } catch (err) {
-      console.error('❌ Error:', err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+  while (true) {
+    const { done, value } = await reader.read();
+    console.log("📦 Received a chunk of data!"); // <--- DEBUG 2
+        
+    if (done) {
+      console.log("🏁 Stream finished.");
+      break;
     }
-  };
+    const chunk = decoder.decode(value, { stream: true });
+    console.log("RAW CHUNK CONTENT:", JSON.stringify(chunk));
+    fullText += chunk;
+    setMessages(prev => prev.map(msg => 
+    msg.id === assistantId ? { ...msg, content: fullText } : msg
+  ));
+}
+
+    // REMOVED: The extra setMessages call here that was causing duplicates.
+
+  } catch (err) {
+    console.error('❌ Error:', err);
+    setError(err.message);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   useEffect(() => {
     if (error) {

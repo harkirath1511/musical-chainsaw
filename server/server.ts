@@ -39,9 +39,6 @@ app.post('/api/chat', async(req, res)=>{
     const {messages} = req.body;
     console.log('📨 Chat request:', messages.length, 'messages');
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-
     try {
         const { tools } = await getMCPClient();
 
@@ -55,22 +52,32 @@ app.post('/api/chat', async(req, res)=>{
                     4. Important status: Use 'is:unread', 'is:starred', or 'is:important'.
                     5. Categories: Use 'category:primary', 'category:social', or 'category:promotions'.
             Example: If a user says "Find Ollama emails from yesterday", 
-            generate the query: "from:Ollama newer_than:1d" `,
+            generate the query: "from:Ollama newer_than:1d" 
+            IMPORTANT : After using a tool, always summarize the results for the user in a natural way. If you found emails, list the key points. If you found nothing, explain why.`,
             messages,
             tools,
             maxRetries: 1,
-            maxSteps: 5
+            maxSteps: 5,
+            onStepFinish: (step) => {
+                console.log('🏁 Step finished. Tool calls made:', step.toolCalls.length);
+            }
         });
+        
 
-        // Stream to response and collect for logging
-        let fullText = '';
-        for await (const textPart of result.textStream) {
-            fullText += textPart;
-            res.write(textPart);
-        }
-        res.end();
+        await result.pipeTextStreamToResponse(res);
+        
+        console.log('✅ Response streamed successfully');
 
-        console.log('✅ Response sent:', fullText.substring(0, 100) + '...');
+        // // Stream to response and collect for logging
+        // let fullText = '';
+        // for await (const textPart of result.textStream) {
+        //     console.log("Streamed part:", textPart);
+        //     fullText += textPart;
+        //     res.write(textPart);
+        // }
+        // res.end();
+
+        // console.log('✅ Response sent:', fullText.substring(0, 100) + '...');
     } catch (error) {
         console.error('❌ Chat error:', error);
         if (!res.headersSent) {

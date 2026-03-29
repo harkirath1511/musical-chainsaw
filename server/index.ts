@@ -69,13 +69,23 @@ mcpServer.tool("search_emails", { query: z.string() }, async ({ query }) => {
        return { content: [{ type: "text", text: "No emails found" }] };
     }
 
+// THIS IS THE PART YOU ARE LIKELY MISSING:
     const snippets = await Promise.all(res.data.messages.map(async (m) => {
+      // We have to call .get() for every single ID found in the list
       const msg = await gmail.users.messages.get({ userId: "me", id: m.id! });
-      return `ID: ${m.id} - ${msg.data.snippet}`;
+      return `Subject: ${msg.data.snippet}`; // This is the actual text
     }));
-    console.log("3 : API response recieved!!")
-    return snippets.join("\n\n");
 
+    console.log("3 : Successfully fetched snippets!!");
+
+    return { 
+      content: [
+        {
+          type: "text", 
+          text: `Found ${snippets.length} emails:\n\n${snippets.join('\n\n')}` 
+        }
+      ] 
+    };
   } catch (error) {
     console.log("ERROR MAN : ", error)
     return {
